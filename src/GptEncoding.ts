@@ -33,10 +33,23 @@ export interface EncodeOptions {
   disallowedSpecial?: Set<string>
 }
 
+enum MultiModalContentType {
+  TEXT = 'text',
+  IMAGE_URL = 'image_url',
+}
+
+export interface MultiModalContent {
+  type: MultiModalContentType;
+  text?: string;
+  image_url?: {
+    url?: string;
+  };
+}
+
 export interface ChatMessage {
   role?: 'system' | 'user' | 'assistant'
   name?: string
-  content: string
+  content: string | MultiModalContent[]
 }
 
 export interface EncodeChatOptions {
@@ -143,7 +156,7 @@ export class GptEncoding {
   }
 
   encodeGenerator(
-    lineToEncode: string,
+    lineToEncode: string | MultiModalContent[],
     {
       allowedSpecial = new Set<string>(),
       disallowedSpecial = new Set<string>([ALL_SPECIAL_TOKENS]),
@@ -160,17 +173,32 @@ export class GptEncoding {
     if (allowedSpecial.has(ALL_SPECIAL_TOKENS)) {
       allowedSpecial = specialTokensSet
     }
+    
+    if (typeof lineToEncode === 'string') {
+      if (disallowedSpecial.size > 0) {
+        const regexPattern = getSpecialTokenRegex(disallowedSpecial)
+        const match = lineToEncode.match(regexPattern)
+        if (match !== null) {
+          throw new Error(`Disallowed special token found: ${match[0]}`)
+        }
+      }
+  
+      return this.bytePairEncodingCoreProcessor.encodeNative(
+        lineToEncode,
+        allowedSpecial,
+      )
+    }
 
     if (disallowedSpecial.size > 0) {
       const regexPattern = getSpecialTokenRegex(disallowedSpecial)
-      const match = lineToEncode.match(regexPattern)
+      const match = lineToEncode.map(content => content.text ?? "").join("")?.match(regexPattern)
       if (match !== null) {
-        throw new Error(`Disallowed special token found: ${match[0]}`)
+        throw new Error(`Disallowed special token found: ${match?.[0]}`)
       }
     }
 
     return this.bytePairEncodingCoreProcessor.encodeNative(
-      lineToEncode,
+      lineToEncode.map(content => content.text ?? "").join(""),
       allowedSpecial,
     )
   }
@@ -329,3 +357,4 @@ export class GptEncoding {
     return [...this.decodeGenerator(inputTokensToDecode)].join('')
   }
 }
+
