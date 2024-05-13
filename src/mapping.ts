@@ -17,6 +17,7 @@ export const encodingNames = [
 export const modelToEncodingMap = {
   // chat
   'gpt-4': cl100k_base,
+  'gpt-4-turbo': cl100k_base,
   'gpt-4-32k': cl100k_base,
   'gpt-4-0314': cl100k_base,
   'gpt-4-32k-0314': cl100k_base,
@@ -88,6 +89,10 @@ const internalChatModelParams = {
     messageSeparator: '',
     roleSeparator: ImSep,
   },
+  'gpt-4-turbo': {
+    messageSeparator: '',
+    roleSeparator: ImSep,
+  }
 }
 
 export const chatModelParams: Partial<Record<ModelName, ChatParameters>> =

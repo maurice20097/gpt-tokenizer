@@ -297,6 +297,61 @@ export class GptEncoding {
     return count
   }
 
+  visionTokenCountHelper(width: number, height: number, detail = "high") {
+    let newWidth = 768,
+      newHeight = 768;
+    let aspect_ratio: number;
+
+    if (detail === "low") {
+      return 85;
+    }
+
+    if (width > 2048 || height > 2048) {
+      aspect_ratio = width / height;
+      if (aspect_ratio > 1) {
+        newWidth = 2048;
+        newHeight = Math.floor(2048 / aspect_ratio);
+      } else {
+        newHeight = 2048;
+        newWidth = Math.floor(2048 * aspect_ratio);
+      }
+    }
+    if (width >= height && height > 768) {
+      newWidth = Math.floor((768 / height) * width);
+    } else if (height > width && width > 768) {
+      newHeight = Math.floor((768 / width) * height);
+    }
+
+    const tiles_width = Math.ceil(newWidth / 512);
+    const tiles_height = Math.ceil(newHeight / 512);
+    const total_tokens = 85 + 170 * (tiles_width * tiles_height);
+    return total_tokens;
+  }
+
+  async visionTokenCount(input: ChatMessage) {
+    if (typeof input.content === "string") {
+      throw new Error(
+        "Expected a multimodal chat-message content but got a normal string."
+      );
+    }
+    let tokenCount = 0;
+
+    for (const content of input.content) {
+      if (content.type === MultiModalContentType.IMAGE_URL) {
+        const imageData = await processImageFromUrl(
+          content.image_url?.url ?? ""
+        );
+        tokenCount += this.visionTokenCountHelper(
+          imageData?.width as number,
+          imageData?.height as number
+        );
+      } else {
+        tokenCount += this.encode(content.text ?? "").length;
+      }
+    }
+    return tokenCount;
+  }
+
   *decodeGenerator(
     inputTokensToDecode: Iterable<number>,
   ): Generator<string, void> {
