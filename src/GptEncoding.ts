@@ -24,7 +24,7 @@ import {
   ImStart,
 } from './specialTokens.js'
 import { endsWithIncompleteUtfPairSurrogate } from './utfUtil.js'
-import { getMaxValueFromMap, getSpecialTokenRegex } from './util.js'
+import { getMaxValueFromMap, getSpecialTokenRegex, processImageFromUrl } from './util.js'
 
 export const ALL_SPECIAL_TOKENS = 'all'
 
@@ -38,11 +38,18 @@ enum MultiModalContentType {
   IMAGE_URL = 'image_url',
 }
 
+enum MultiModalContentDetail {
+  LOW = 'low',
+  HIGH = 'high',
+  AUTO = 'auto',
+}
+
 export interface MultiModalContent {
   type: MultiModalContentType;
   text?: string;
   image_url?: {
     url?: string;
+    detail?: MultiModalContentDetail;
   };
 }
 
@@ -297,9 +304,17 @@ export class GptEncoding {
     return count
   }
 
-  visionTokenCountHelper(width: number, height: number, detail = "high") {
-    let newWidth = 768,
-      newHeight = 768;
+  /**
+   * Gets the width and height of an image from a URL and returns the number of tokens required to process it.
+   * @param {number} width - The width of the image.
+   * @param {number} height - The height of the image.
+   * @param {string} detail - Controls how the model processes the image and generates its textual understanding. (low, high or auto)
+   * This algorithm has been adapted from OpenAI's guidelines:
+   * https://platform.openai.com/docs/guides/vision/calculating-costs
+   */
+  visionTokenCountHelper(width: number, height: number, detail = "high"): number {
+    let baseWidth = 768,
+      baseHeight = 768;
     let aspect_ratio: number;
 
     if (detail === "low") {
@@ -309,25 +324,28 @@ export class GptEncoding {
     if (width > 2048 || height > 2048) {
       aspect_ratio = width / height;
       if (aspect_ratio > 1) {
-        newWidth = 2048;
-        newHeight = Math.floor(2048 / aspect_ratio);
+        baseWidth = 2048;
+        baseHeight = Math.floor(2048 / aspect_ratio);
       } else {
-        newHeight = 2048;
-        newWidth = Math.floor(2048 * aspect_ratio);
+        baseHeight = 2048;
+        baseWidth = Math.floor(2048 * aspect_ratio);
       }
     }
     if (width >= height && height > 768) {
-      newWidth = Math.floor((768 / height) * width);
+      baseWidth = Math.floor((768 / height) * width);
     } else if (height > width && width > 768) {
-      newHeight = Math.floor((768 / width) * height);
+      baseHeight = Math.floor((768 / width) * height);
     }
 
-    const tiles_width = Math.ceil(newWidth / 512);
-    const tiles_height = Math.ceil(newHeight / 512);
+    const tiles_width = Math.ceil(baseWidth / 512);
+    const tiles_height = Math.ceil(baseHeight / 512);
     const total_tokens = 85 + 170 * (tiles_width * tiles_height);
     return total_tokens;
   }
 
+  /**
+   * 
+   */
   async visionTokenCount(input: ChatMessage) {
     if (typeof input.content === "string") {
       throw new Error(
@@ -339,11 +357,12 @@ export class GptEncoding {
     for (const content of input.content) {
       if (content.type === MultiModalContentType.IMAGE_URL) {
         const imageData = await processImageFromUrl(
-          content.image_url?.url ?? ""
+          content.image_url?.url as string
         );
         tokenCount += this.visionTokenCountHelper(
           imageData?.width as number,
-          imageData?.height as number
+          imageData?.height as number,
+          content.image_url?.detail ?? MultiModalContentDetail.AUTO
         );
       } else {
         tokenCount += this.encode(content.text ?? "").length;
