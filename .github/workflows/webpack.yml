@@ -24,5 +24,6 @@ jobs:
 
     - name: Build
       run: |
+        npm install -g yarn
         npm install
         npm run build:esm
